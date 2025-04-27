@@ -55,7 +55,7 @@ class Notifier(commands.Cog):
                 ('24h', timedelta(hours=24)),
                 ('3h', timedelta(hours=3)),
                 ('1h', timedelta(hours=1)),
-                ('now', timedelta(seconds=30))
+                ('now', timedelta(seconds=0))
             ]
 
             for label, delta in notification_deltas:
@@ -75,8 +75,7 @@ class Notifier(commands.Cog):
                         status_msg = f"⏳ Starts {time_remaining_str}"
                         embed_notification = discord.Embed(
                             title=f"🔔 Upcoming Event: {summary}",
-                            description=convert_html_to_discord(
-                                f"{description}\n\n🕒 Start time: <t:{unix_timestamp}:F>\n{status_msg}"),
+                            description=f"{convert_html_to_discord(description)}\n\n🕒 Start time: <t:{unix_timestamp}:F>\n{status_msg}",
                             color=discord.Color.blue()
                         )
                     else:
@@ -84,8 +83,7 @@ class Notifier(commands.Cog):
                         status_msg = f"✅ Event has **started**"
                         embed_notification = discord.Embed(
                             title=f"🔔 Event Started: {summary}",
-                            description=convert_html_to_discord(
-                                f"{description}\n\n🕒 Start time: <t:{unix_timestamp}:F>\n{status_msg}"),
+                            description=f"{convert_html_to_discord(description)}\n\n🕒 Start time: <t:{unix_timestamp}:F>\n{status_msg}",
                             color=discord.Color.green()
                         )
 
