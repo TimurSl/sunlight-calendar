@@ -11,5 +11,3 @@ def is_moderator():
             return True
         return MODERATOR_ROLE_ID in [r.id for r in ctx.author.roles]
     return commands.check(predicate)
-
-AI_USER_ROLE_ID = int(os.getenv("DISCORD_AI_USER_ROLE_ID"))

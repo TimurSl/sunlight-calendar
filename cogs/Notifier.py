@@ -7,7 +7,22 @@ import os
 from dotenv import load_dotenv
 
 from api.google.get_events import unix_time
+from common.checks.permission_checks import is_moderator
 from handlers.calendar_handler import CalendarHandler
+
+import re
+
+def convert_html_to_discord(html_text: str) -> str:
+    # Convert bold tags
+    text = re.sub(r'<\/?b>', '**', html_text)
+    # Convert <br> to newlines
+    text = re.sub(r'<br\s*/?>', '\n', text)
+    # Convert <a href="url">text</a> to [text](url)
+    text = re.sub(r'<a href="([^"]+)"[^>]*>(.*?)<\/a>', r'[\2](\1)', text)
+    # Remove any other leftover HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    return text.strip()
+
 
 load_dotenv()
 DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_NOTIFICATION_CHANNEL_ID"))
@@ -20,11 +35,13 @@ class Notifier(commands.Cog):
         self.check_calendar_events.start()
 
     @tasks.loop(minutes=1)
-    async def check_calendar_events(self):
+    async def check_calendar_events(self, called_from_user=False):
+        await self.gather_events(called_from_user)
+
+    async def gather_events(self, called_from_user):
         now = datetime.now(timezone.utc)
         events = self.calendar.get_upcoming_events(days=1)
         channel = self.bot.get_channel(DISCORD_CHANNEL_ID)
-
         for event in events:
             event_id = event['id']
             summary = event.get('summary', 'Untitled Event')
@@ -58,7 +75,8 @@ class Notifier(commands.Cog):
                         status_msg = f"⏳ Starts {time_remaining_str}"
                         embed_notification = discord.Embed(
                             title=f"🔔 Upcoming Event: {summary}",
-                            description=f"{description}\n\n🕒 Start time: <t:{unix_timestamp}:F>\n{status_msg}",
+                            description=convert_html_to_discord(
+                                f"{description}\n\n🕒 Start time: <t:{unix_timestamp}:F>\n{status_msg}"),
                             color=discord.Color.blue()
                         )
                     else:
@@ -66,13 +84,18 @@ class Notifier(commands.Cog):
                         status_msg = f"✅ Event has **started**"
                         embed_notification = discord.Embed(
                             title=f"🔔 Event Started: {summary}",
-                            description=f"{description}\n\n🕒 Start time: <t:{unix_timestamp}:F>\n{status_msg}",
+                            description=convert_html_to_discord(
+                                f"{description}\n\n🕒 Start time: <t:{unix_timestamp}:F>\n{status_msg}"),
                             color=discord.Color.green()
                         )
 
-                    await channel.send("@here", embed=embed_notification)
+                    await channel.send("@here" if not called_from_user else "", embed=embed_notification)
                     self.notified.add(key)
                     break
+
+    @commands.hybrid_command(name="events", description="Get upcoming events from your calendar")
+    async def events(self, ctx):
+        await self.gather_events(called_from_user=True)
 
     @check_calendar_events.before_loop
     async def before_loop(self):
