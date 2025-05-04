@@ -5,10 +5,25 @@ from discord.ext import commands, tasks
 from datetime import datetime, timedelta, timezone
 import os
 from dotenv import load_dotenv
+from useful import get_pwd
 
-from api.google.get_events import unix_time
-from common.checks.permission_checks import is_moderator
 from handlers.calendar_handler import CalendarHandler
+
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+if not os.path.exists(os.path.join(get_pwd(), 'logs')):
+    os.makedirs(os.path.join(get_pwd(), 'logs'))
+
+file_handler = logging.FileHandler(os.path.join(get_pwd(), 'logs', 'notifier.log'))
+file_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+
 
 import re
 
@@ -38,7 +53,7 @@ class Notifier(commands.Cog):
     async def check_calendar_events(self, called_from_user=False):
         await self.gather_events(called_from_user)
 
-    async def gather_events(self, called_from_user):
+    async def gather_events(self, called_from_user, ctx=None):
         now = datetime.now(timezone.utc)
         events = self.calendar.get_upcoming_events(days=1)
         channel = self.bot.get_channel(DISCORD_CHANNEL_ID)
@@ -47,38 +62,41 @@ class Notifier(commands.Cog):
             summary = event.get('summary', 'Untitled Event')
             description = event.get('description', 'No description provided')
             start_str = event['start'].get('dateTime', event['start'].get('date'))
+            logger.info(f"Event ID: {event_id}, Summary: {summary}, Start: {start_str}")
+
             start_time = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
             unix_timestamp = int(start_time.timestamp())
+            logger.info(f"Start time (ISO): {start_str}, Start time (Unix): {unix_timestamp}")
 
             now = datetime.now(timezone.utc)
             notification_deltas = [
-                ('24h', timedelta(hours=24)),
-                ('3h', timedelta(hours=3)),
-                ('1h', timedelta(hours=1)),
-                ('now', timedelta(seconds=0))
+                ('8h', 8 * 3600),
+                ('3h', 3 * 3600),
+                ('1h', 1 * 3600),
+                ('now', 0),
             ]
 
             for label, delta in notification_deltas:
-                notify_time = start_time - delta
-                if notify_time.tzinfo is None:
-                    notify_time = notify_time.replace(tzinfo=timezone.utc)
-
-                unix_timestamp = int(start_time.timestamp())
+                notify_time = unix_timestamp - delta
+                logger.info(f"Notify time ({label}): {notify_time}, Current time: {now.timestamp()}")
                 key = f"{event_id}_{label}"
 
-                if abs((now - notify_time).total_seconds()) <= 60 and key not in self.notified:
+                if notify_time <= now.timestamp() and key not in self.notified:
                     time_until = start_time - now
 
                     if time_until.total_seconds() > 0:
                         # Событие ещё впереди — пишем сколько осталось
                         time_remaining_str = discord.utils.format_dt(start_time, style='R')  # <t:...:R>
+                        logger.info(f"Time remaining: {time_remaining_str}")
                         status_msg = f"⏳ Starts {time_remaining_str}"
                         embed_notification = discord.Embed(
                             title=f"🔔 Upcoming Event: {summary}",
                             description=f"{convert_html_to_discord(description)}\n\n🕒 Start time: <t:{unix_timestamp}:F>\n{status_msg}",
                             color=discord.Color.blue()
                         )
+                        logger.info(f"Sending notification for event: {summary}")
                     else:
+                        logger.info(f"Event has already started: {summary}")
                         # Событие уже началось
                         status_msg = f"✅ Event has **started**"
                         embed_notification = discord.Embed(
@@ -86,14 +104,27 @@ class Notifier(commands.Cog):
                             description=f"{convert_html_to_discord(description)}\n\n🕒 Start time: <t:{unix_timestamp}:F>\n{status_msg}",
                             color=discord.Color.green()
                         )
+                        logger.info(f"Sending notification for event: {summary}")
+                        # remove the event from the notified set
 
-                    await channel.send("@here" if not called_from_user else "", embed=embed_notification)
-                    self.notified.add(key)
-                    break
+                    embed_notification.set_footer(text="Event ID: " + event_id)
+                    if called_from_user:
+                        if ctx:
+                            await ctx.send(embed=embed_notification)
+                            logger.info(f"Notification sent to user {ctx.author} for event: {summary}")
+                    else:
+                        await channel.send("@here" if not called_from_user else "", embed=embed_notification)
+                        logger.info(f"Notification sent for event: {summary}")
+
+                        self.notified.add(key)
+                        logger.info(f"Added to notified set: {key}")
+                        break
 
     @commands.hybrid_command(name="events", description="Get upcoming events from your calendar")
     async def events(self, ctx):
-        await self.gather_events(called_from_user=True)
+        logger.info(f"User {ctx.author} requested events.")
+        await self.gather_events(called_from_user=True, ctx=ctx)
+        logger.info(f"User {ctx.author} notified about events.")
 
     @check_calendar_events.before_loop
     async def before_loop(self):
