@@ -54,7 +54,6 @@ class Notifier(commands.Cog):
         await self.gather_events(called_from_user)
 
     async def gather_events(self, called_from_user, ctx=None):
-        now = datetime.now(timezone.utc)
         events = self.calendar.get_upcoming_events(days=1)
         channel = self.bot.get_channel(DISCORD_CHANNEL_ID)
         for event in events:
@@ -65,10 +64,10 @@ class Notifier(commands.Cog):
             logger.info(f"Event ID: {event_id}, Summary: {summary}, Start: {start_str}")
 
             start_time = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-            unix_timestamp = int(start_time.timestamp())
-            logger.info(f"Start time (ISO): {start_str}, Start time (Unix): {unix_timestamp}")
+            start_unix = int(start_time.timestamp())
+            logger.info(f"Start time (ISO): {start_str}, Start time (Unix): {start_unix}")
 
-            now = datetime.now(timezone.utc)
+            now_unix = int(datetime.now(timezone.utc).timestamp())
             notification_deltas = [
                 ('8h', 8 * 3600),
                 ('3h', 3 * 3600),
@@ -77,21 +76,21 @@ class Notifier(commands.Cog):
             ]
 
             for label, delta in notification_deltas:
-                notify_time = unix_timestamp - delta
-                logger.info(f"Notify time ({label}): {notify_time}, Current time: {now.timestamp()}")
+                notify_time_unix = start_unix - delta
+                logger.info(f"Notify time ({label}): {notify_time_unix}, Current time: {now_unix}")
                 key = f"{event_id}_{label}"
 
-                if notify_time <= now.timestamp() and key not in self.notified:
-                    time_until = start_time - now
+                if notify_time_unix <= now_unix and key not in self.notified:
+                    time_until = start_unix - now_unix
 
-                    if time_until.total_seconds() > 0:
+                    if time_until > 0:
                         # Событие ещё впереди — пишем сколько осталось
                         time_remaining_str = discord.utils.format_dt(start_time, style='R')  # <t:...:R>
                         logger.info(f"Time remaining: {time_remaining_str}")
                         status_msg = f"⏳ Starts {time_remaining_str}"
                         embed_notification = discord.Embed(
                             title=f"🔔 Upcoming Event: {summary}",
-                            description=f"{convert_html_to_discord(description)}\n\n🕒 Start time: <t:{unix_timestamp}:F>\n{status_msg}",
+                            description=f"{convert_html_to_discord(description)}\n\n🕒 Start time: <t:{start_unix}:F>\n{status_msg}",
                             color=discord.Color.blue()
                         )
                         logger.info(f"Sending notification for event: {summary}")
@@ -101,7 +100,7 @@ class Notifier(commands.Cog):
                         status_msg = f"✅ Event has **started**"
                         embed_notification = discord.Embed(
                             title=f"🔔 Event Started: {summary}",
-                            description=f"{convert_html_to_discord(description)}\n\n🕒 Start time: <t:{unix_timestamp}:F>\n{status_msg}",
+                            description=f"{convert_html_to_discord(description)}\n\n🕒 Start time: <t:{start_unix}:F>\n{status_msg}",
                             color=discord.Color.green()
                         )
                         logger.info(f"Sending notification for event: {summary}")
