@@ -83,6 +83,8 @@ class Notifier(commands.Cog):
                 if notify_time_unix <= now_unix and key not in self.notified:
                     time_until = start_unix - now_unix
 
+                    self.notified.add(key)
+
                     if time_until > 0:
                         # Событие ещё впереди — пишем сколько осталось
                         time_remaining_str = discord.utils.format_dt(start_time, style='R')  # <t:...:R>
@@ -104,6 +106,8 @@ class Notifier(commands.Cog):
                             color=discord.Color.green()
                         )
                         logger.info(f"Sending notification for event: {summary}")
+                        # clear the notified set with the event ID
+                        self.notified = {key for key in self.notified if not key.startswith(event_id)}
                         # remove the event from the notified set
 
                     embed_notification.set_footer(text="Event ID: " + event_id)
@@ -115,7 +119,6 @@ class Notifier(commands.Cog):
                         await channel.send("@here" if not called_from_user else "", embed=embed_notification)
                         logger.info(f"Notification sent for event: {summary}")
 
-                        self.notified.add(key)
                         logger.info(f"Added to notified set: {key}")
                         break
 
