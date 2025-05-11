@@ -78,12 +78,11 @@ class Notifier(commands.Cog):
             for label, delta in notification_deltas:
                 notify_time_unix = start_unix - delta
                 logger.info(f"Notify time ({label}): {notify_time_unix}, Current time: {now_unix}")
-                key = f"{event_id}_{label}"
+                key = f"{event_id}_{label}_{start_unix}"
 
                 if notify_time_unix <= now_unix and key not in self.notified:
                     time_until = start_unix - now_unix
 
-                    self.notified.add(key)
 
                     if time_until > 0:
                         # Событие ещё впереди — пишем сколько осталось
@@ -106,9 +105,6 @@ class Notifier(commands.Cog):
                             color=discord.Color.green()
                         )
                         logger.info(f"Sending notification for event: {summary}")
-                        # clear the notified set with the event ID
-                        self.notified = {key for key in self.notified if not key.startswith(event_id)}
-                        # remove the event from the notified set
 
                     embed_notification.set_footer(text="Event ID: " + event_id)
                     if called_from_user:
@@ -118,6 +114,7 @@ class Notifier(commands.Cog):
                     else:
                         await channel.send("@here" if not called_from_user else "", embed=embed_notification)
                         logger.info(f"Notification sent for event: {summary}")
+                        self.notified.add(key)
 
                         logger.info(f"Added to notified set: {key}")
                         break
